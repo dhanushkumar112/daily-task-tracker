@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Daily Task Tracker</title>
+  <style>
+    body { font-family: Arial; padding: 20px; }
+    h2 { margin-top: 40px; }
+    .task { display: flex; justify-content: space-between; margin: 4px 0; }
+    .time { font-weight: bold; color: #555; }
+    .category-section { border: 1px solid #ccc; padding: 10px; margin-bottom: 20px; border-radius: 10px; }
+  </style>
+</head>
+<body>
+  <h1>Daily Task Tracker</h1>
+  <p id="date"></p>
+
+  <!-- Add Task Form -->
+  <h2>Add New Task</h2>
+  <form id="addForm">
+    <input type="text" id="taskText" placeholder="Task name" required>
+    <select id="taskCategory">
+      <option value="daily">Daily</option>
+      <option value="study">Study</option>
+      <option value="other">Other</option>
+    </select>
+    <input type="time" id="taskTime">
+    <label>
+      <input type="checkbox" id="isTimeBased"> Time-based?
+    </label>
+    <button type="submit">Add Task</button>
+  </form>
+
+  <!-- Task Sections -->
+  <div id="taskContainer"></div>
+
+  <script>
+    const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbw_QkTb-n2Tq05BOAkcfWvJo90XKby31mX2ZmZeOrNJrpxhAR3KqCpmYyHnkXlGtimL/exec"; // Replace this with your Web App URL
+
+    // Show today's date
+    const today = new Date();
+    const dateString = today.toLocaleDateString("en-IN", { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    document.getElementById("date").innerText = dateString;
+
+    // Fetch & render tasks
+    async function loadTasks() {
+      const res = await fetch(SHEET_API_URL + "?action=get");
+      const tasks = await res.json();
+      const container = document.getElementById("taskContainer");
+      container.innerHTML = "";
+
+      const categories = { daily: [], study: [], other: [] };
+
+      tasks.forEach(task => {
+        const obj = {
+          id: task.row,
+          name: task.task,
+          time: task.time,
+          done: task.done,
+          timeBased: task.time_based === "TRUE",
+        };
+        categories[task.category.toLowerCase()].push(obj);
+      });
+
+      for (const cat in categories) {
+        const section = document.createElement("div");
+        section.className = "category-section";
+
+        const heading = document.createElement("h2");
+        heading.textContent = cat.charAt(0).toUpperCase() + cat.slice(1);
+        section.appendChild(heading);
+
+        // Sort: time-based first, by time
+        categories[cat].sort((a, b) => {
+          if (a.timeBased && b.timeBased) return a.time.localeCompare(b.time);
+          if (a.timeBased) return -1;
+          if (b.timeBased) return 1;
+          return 0;
+        });
+
+        categories[cat].forEach(task => {
+          const div = document.createElement("div");
+          div.className = "task";
+
+          const label = document.createElement("label");
+          const cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.checked = task.done === "TRUE";
+          cb.onchange = () => updateStatus(task.id, cb.checked);
+          label.appendChild(cb);
+          label.appendChild(document.createTextNode(" " + task.name + (task.timeBased ? ` ⏰ (${task.time})` : "")));
+
+          const delBtn = document.createElement("button");
+          delBtn.textContent = "❌";
+          delBtn.onclick = () => deleteTask(task.id);
+
+          div.appendChild(label);
+          div.appendChild(delBtn);
+          section.appendChild(div);
+        });
+
+        container.appendChild(section);
+      }
+    }
+
+    // Add task
+    document.getElementById("addForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const name = document.getElementById("taskText").value;
+      const cat = document.getElementById("taskCategory").value;
+      const time = document.getElementById("taskTime").value;
+      const isTime = document.getElementById("isTimeBased").checked;
+
+      await fetch(SHEET_API_URL + "?action=add", {
+        method: "POST",
+        body: JSON.stringify({ task: name, category: cat, time, time_based: isTime })
+      });
+
+      document.getElementById("addForm").reset();
+      loadTasks();
+    });
+
+    // Update status
+    async function updateStatus(id, checked) {
+      await fetch(SHEET_API_URL + "?action=update", {
+        method: "POST",
+        body: JSON.stringify({ row: id, done: checked })
+      });
+    }
+
+    // Delete task
+    async function deleteTask(id) {
+      await fetch(SHEET_API_URL + "?action=delete", {
+        method: "POST",
+        body: JSON.stringify({ row: id })
+      });
+      loadTasks();
+    }
+
+    loadTasks();
+  </script>
+</body>
+</html>
